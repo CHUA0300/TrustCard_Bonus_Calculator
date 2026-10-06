@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Trust Bonus Calculator</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Standalone reset (the Claude viewer normally supplies this) */
+:root { color-scheme: light; }
+body { margin: 0; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+
+/* Layout concept: one narrow column. A blue card-style result sits under the spend input, then tiers, a return-by-spend chart and assumptions. Look: blue, white and yellow in sentence case with Open Sans, in the spirit of a payments brand. No logos. */
+:root {
+  --bg: #F3F5FB;
+  --surface: #FFFFFF;
+  --surface-2: #EEF1FA;
+  --ink: #0F1640;
+  --ink-2: #4F5A86;
+  --line: #D9DEF0;
+  --accent: #1434CB;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #E6EBFF;
+  --gold: #F7B600;
+  --good: #0B7F57;
+  --warn: #A8530B;
+  --pass-bg: linear-gradient(140deg, #1B3FDB 0%, #1434CB 45%, #0E2A9F 100%);
+  --pass-ink: #FFFFFF;
+  --pass-ink-2: #C9D3FF;
+  --pass-line: rgba(255, 255, 255, 0.35);
+  --pass-good: #9DF2CB;
+  --pass-warn: #FFD59A;
+  --font-body: "Open Sans", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #080D2E;
+    --surface: #111845;
+    --surface-2: #18215A;
+    --ink: #EEF1FF;
+    --ink-2: #A3ADDB;
+    --line: #273071;
+    --accent: #8FA6FF;
+    --accent-ink: #080D2E;
+    --accent-soft: #1B2670;
+    --gold: #F7B600;
+    --good: #4CD6A0;
+    --warn: #F2B25E;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #080D2E;
+  --surface: #111845;
+  --surface-2: #18215A;
+  --ink: #EEF1FF;
+  --ink-2: #A3ADDB;
+  --line: #273071;
+  --accent: #8FA6FF;
+  --accent-ink: #080D2E;
+  --accent-soft: #1B2670;
+  --gold: #F7B600;
+  --good: #4CD6A0;
+  --warn: #F2B25E;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap {
+  max-width: 640px;
+  margin-inline: auto;
+  padding-inline: 16px;
+  padding-block: 28px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.eyebrow { margin: 0; font-size: 14px; font-weight: 600; color: var(--accent); }
+.label { font-size: 13px; font-weight: 500; color: var(--ink-2); }
+h1 {
+  font-weight: 600;
+  font-size: clamp(30px, 8.5vw, 40px);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin: 6px 0 10px;
+  text-wrap: balance;
+}
+h2 { font-weight: 600; font-size: 18px; line-height: 1.3; margin: 0 0 12px; }
+.lede { margin: 0; color: var(--ink-2); max-width: 56ch; }
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 18px;
+  min-width: 0;
+}
+
+/* Spend input */
+.spend-field {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  border-bottom: 2px solid var(--line);
+  padding-bottom: 6px;
+  margin: 8px 0 14px;
+}
+.spend-field:focus-within { border-color: var(--accent); }
+.spend-field span { font-size: 26px; font-weight: 600; color: var(--ink-2); }
+.spend-field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: clamp(32px, 10vw, 44px);
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.spend-field input::-webkit-outer-spin-button,
+.spend-field input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; margin: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.chip {
+  font: inherit;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 14px;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.chip:hover { border-color: var(--accent); }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Result card */
+.pass {
+  position: relative;
+  overflow: hidden;
+  background: var(--pass-bg);
+  color: var(--pass-ink);
+  border-radius: 20px;
+}
+.pass .label { color: var(--pass-ink-2); }
+.pass-top { padding: 20px 20px 18px; }
+.big {
+  font-weight: 600;
+  font-size: clamp(44px, 14vw, 72px);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--pass-ink);
+  margin: 6px 0 8px;
+  overflow-wrap: anywhere;
+}
+.status { margin: 0; color: var(--pass-ink-2); font-size: 14px; }
+.perf { position: relative; height: 0; border-top: 2px dashed var(--pass-line); margin-inline: 12px; }
+.perf::before, .perf::after {
+  content: "";
+  position: absolute;
+  top: -12px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bg);
+}
+.perf::before { left: -23px; }
+.perf::after { right: -23px; }
+.pass-bottom {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 18px 20px 20px;
+}
+.stat .label { display: block; min-height: 2.8em; line-height: 1.4; }
+.stat .num {
+  font-weight: 600;
+  font-size: clamp(20px, 6vw, 26px);
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+.pass .gold { color: var(--gold); }
+.pass .good { color: var(--pass-good); }
+.pass .warn { color: var(--pass-warn); }
+
+/* Tiers */
+.tiers { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.tier {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  align-items: baseline;
+}
+.tier.on { background: var(--accent-soft); border-color: var(--accent); }
+.tier .at { font-weight: 600; font-size: 16px; font-variant-numeric: tabular-nums; }
+.tier .gift { font-weight: 700; font-size: 16px; font-variant-numeric: tabular-nums; text-align: right; }
+.tier .meta { color: var(--ink-2); font-size: 13px; font-variant-numeric: tabular-nums; }
+.tier .pill {
+  justify-self: end;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.tier.on .pill { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.bar { grid-column: 1 / -1; height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; margin-top: 6px; }
+.bar i { display: block; height: 100%; background: var(--accent); border-radius: 999px; transition: width .25s ease; }
+.tier.on .bar i { background: var(--gold); }
+.insight { margin: 14px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); font-size: 14px; }
+
+/* Chart */
+#chart { width: 100%; min-width: 0; }
+#chart svg { display: block; max-width: 100%; }
+.tx { fill: var(--ink-2); font-family: var(--font-body); font-size: 11px; }
+.tx-accent { fill: var(--accent); font-family: var(--font-body); font-size: 11.5px; font-weight: 700; }
+.tx-ink { fill: var(--ink); font-family: var(--font-body); font-size: 11.5px; font-weight: 700; }
+.grid-line { stroke: var(--line); stroke-width: 1; }
+.curve { stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.dot { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+.bench { stroke: var(--warn); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.cursor { stroke: var(--ink-2); stroke-width: 1; stroke-dasharray: 3 3; }
+.note { margin: 12px 0 0; color: var(--ink-2); font-size: 13.5px; }
+
+/* Assumptions */
+.controls { display: flex; flex-direction: column; gap: 18px; }
+.ctl-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.ctl-head label { font-weight: 600; }
+.ctl-val { font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.hint { margin: 2px 0 0; color: var(--ink-2); font-size: 13px; }
+.pct-field {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--line); border-radius: 10px; padding: 4px 10px; background: var(--surface-2);
+}
+.pct-field input {
+  width: 4.2em; border: 0; outline: 0; background: transparent; color: var(--ink);
+  font: inherit; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right;
+}
+.pct-field:focus-within { border-color: var(--accent); }
+.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.switch { position: relative; flex: none; width: 46px; height: 28px; }
+.switch input {
+  appearance: none; -webkit-appearance: none; margin: 0; width: 100%; height: 100%;
+  border-radius: 999px; background: var(--line); cursor: pointer; transition: background .2s ease;
+}
+.switch input:checked { background: var(--accent); }
+.switch input::after {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--surface); transition: transform .2s ease; pointer-events: none;
+}
+.switch input:checked::after { transform: translateX(18px); }
+.notes { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: 13.5px; display: flex; flex-direction: column; gap: 6px; }
+.foot { color: var(--ink-2); font-size: 13px; margin: 0; }
+.foot a { color: var(--accent); }
+
+/* Referral codes */
+.refs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.ref { background: var(--surface-2); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ref-name { font-weight: 600; }
+.ref-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.code { font-family: var(--font-body); font-weight: 700; font-size: 18px; letter-spacing: 0.06em; background: var(--surface); border: 1px dashed var(--accent); border-radius: 10px; padding: 6px 12px; user-select: all; overflow-wrap: anywhere; }
+.btn { font: inherit; font-weight: 600; font-size: 14px; color: var(--accent-ink); background: var(--accent); border: 0; border-radius: 999px; padding: 8px 16px; cursor: pointer; text-decoration: none; display: inline-block; }
+.btn.alt { background: var(--surface); color: var(--accent); border: 1px solid var(--accent); }
+@media (prefers-reduced-motion: reduce) {
+  .bar i, .switch input, .switch input::after { transition: none; }
+}
+</style>
+</head>
+<body>
+
+<main class="wrap">
+  <header>
+    <p class="eyebrow">Trust Freedom Card</p>
+    <h1>Bonus calculator</h1>
+    <p class="lede">See what the new-to-Trust sign-up bonus is worth at different spend levels. Apply and get approved by 31 Oct 2026, then spend within 31 days of approval.</p>
+  </header>
+
+  <section class="panel" aria-labelledby="spend-h">
+    <h2 id="spend-h" class="label" style="margin:0">Qualifying spend in 31 days</h2>
+    <div class="spend-field">
+      <span aria-hidden="true">S$</span>
+      <input id="spend" type="number" inputmode="numeric" min="0" max="15000" step="100" value="5000" aria-label="Qualifying spend in Singapore dollars">
+    </div>
+    <input id="spendRange" type="range" min="0" max="15000" step="100" value="5000" aria-label="Spend slider">
+    <div class="chips" role="group" aria-label="Quick amounts">
+      <button class="chip" type="button" data-v="1000" aria-pressed="false">S$1,000</button>
+      <button class="chip" type="button" data-v="5000" aria-pressed="true">S$5,000</button>
+      <button class="chip" type="button" data-v="15000" aria-pressed="false">S$15,000</button>
+    </div>
+  </section>
+
+  <section class="pass" aria-live="polite" aria-label="Result">
+    <div class="pass-top">
+      <span class="label" id="milesLabel">Bonus Max Miles</span>
+      <p class="big" id="miles">50,000</p>
+      <p class="status" id="status">2 of 3 tiers unlocked</p>
+    </div>
+    <div class="perf" aria-hidden="true"></div>
+    <div class="pass-bottom">
+      <div class="stat"><span class="label">Cash value</span><div class="num gold" id="value">S$900</div></div>
+      <div class="stat"><span class="label">Effective cashback</span><div class="num" id="eff">18.0%</div></div>
+      <div class="stat"><span class="label" id="benchLabel">vs 1.5% cashback card</span><div class="num good" id="delta">+S$825</div></div>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="tiers-h">
+    <h2 id="tiers-h">Tiers</h2>
+    <ul class="tiers" id="tiers"></ul>
+    <p class="insight" id="insight"></p>
+  </section>
+
+  <section class="panel" aria-labelledby="chart-h">
+    <h2 id="chart-h">Return by spend</h2>
+    <div id="chart"></div>
+    <p class="note">The bonus is a fixed amount, so the return per dollar jumps when a tier unlocks and thins out until the next one. Spending beyond S$15,000 adds no further bonus.</p>
+  </section>
+
+  <section class="panel" aria-labelledby="assume-h">
+    <h2 id="assume-h">Assumptions</h2>
+    <div class="controls">
+      <div>
+        <div class="ctl-head"><label for="rate">Value of one Max Mile</label><span class="ctl-val" id="rateOut">S$0.018</span></div>
+        <input id="rate" type="range" min="1" max="2" step="0.1" value="1.8">
+        <p class="hint">HeyMax FlyAnywhere currently pays 1.8 cents per mile. Lower it to test a weaker rate.</p>
+      </div>
+      <div>
+        <div class="ctl-head"><label for="bench">Compare with a cashback card at</label>
+          <span class="pct-field"><input id="bench" type="number" inputmode="decimal" min="0" max="20" step="0.1" value="1.5"><span aria-hidden="true">%</span></span>
+        </div>
+        <p class="hint">Net cash difference on the same spend.</p>
+      </div>
+      <div class="switch-row">
+        <div>
+          <label for="baseOn" style="font-weight:600">Include regular earn</label>
+          <p class="hint">Adds 1.3 miles per S$1, earned in S$5 blocks. Off by default.</p>
+        </div>
+        <span class="switch"><input id="baseOn" type="checkbox"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <ul class="notes">
+      <li>Tiers are cumulative: 20,000, then 30,000 more, then 50,000 more, up to 100,000 Max Miles.</li>
+      <li>Cash value assumes you cash out through HeyMax FlyAnywhere. That needs a booked flight, and you must hold enough miles to cover the whole ticket.</li>
+      <li>Link your Trust card in HeyMax before you spend. It is recommended rather than a stated condition, but HeyMax only tracks purchases made after linking, so it is how you follow your progress.</li>
+      <li>Only qualifying spend counts. Insurance, utilities, government services, education, donations and prepaid top-ups are excluded.</li>
+      <li>Regular earn is in Trust Miles. Converting them to Max Miles has a fee, which this calculator leaves out.</li>
+    </ul>
+  </section>
+
+  <section class="panel" aria-labelledby="refer-h">
+    <h2 id="refer-h">Sign up with my referral codes</h2>
+    <ul class="refs">
+      <li class="ref">
+        <span class="ref-name">1. HeyMax account</span>
+        <div class="ref-row"><code class="code">92A56514</code><button class="btn alt" type="button" data-copy="92A56514">Copy code</button></div>
+        <p class="hint">Use this code when you sign up to get 200 Max Miles after you open an account and complete your first transaction.</p>
+        <div class="ref-row"><a class="btn" href="https://heymax.go.link/jIq00?adj_label=92A56514" target="_blank" rel="noopener noreferrer">Get HeyMax</a></div>
+      </li>
+      <li class="ref">
+        <span class="ref-name">2. Trust Freedom Card</span>
+        <div class="ref-row"><code class="code">BFG5NWTS</code><button class="btn alt" type="button" data-copy="BFG5NWTS">Copy code</button></div>
+        <p class="hint">Apply through the HeyMax app, which refers you to Trust Bank, or download the Trust Bank SG app and tap Apply Now on the Freedom Card. In the Trust app, enter the code when asked. Choose Miles during onboarding, or you won't qualify for the 100,000 Max Miles offer. Then link the card in HeyMax before you spend, so your progress is tracked.</p>
+      </li>
+    </ul>
+  </section>
+
+  <p class="foot">Independent calculator, not affiliated with or endorsed by Visa or Trust Bank. Estimates for illustration, not financial advice. Terms can change, so check the latest conditions before you apply. Source: <a href="https://milelion.com/2026/09/21/trust-freedom-card-now-earns-krisflyer-and-max-miles-with-100000-miles-sign-up-bonus/" target="_blank" rel="noopener noreferrer">The MileLion</a>.</p>
+</main>
+
+<script>
+(function () {
+  var TIERS = [{ at: 1000, gift: 20000 }, { at: 5000, gift: 30000 }, { at: 15000, gift: 50000 }];
+  var MAX_SPEND = 15000;
+  var st = { spend: 5000, cents: 1.8, bench: 1.5, base: false };
+  var $ = function (id) { return document.getElementById(id); };
+  var nf = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+  var fmt = function (n) { return nf.format(Math.round(n)); };
+  var sgd = function (n) { return 'S$' + fmt(n); };
+
+  function bonus(s) { return TIERS.reduce(function (a, t) { return s >= t.at ? a + t.gift : a; }, 0); }
+  function baseMiles(s) { return st.base ? Math.floor(Math.floor(s / 5) * 6.5) : 0; }
+  function miles(s) { return bonus(s) + baseMiles(s); }
+  function value(s) { return miles(s) * st.cents / 100; }
+  function eff(s) { return s > 0 ? value(s) / s * 100 : 0; }
+  function trimPct(n) { return String(Number(n.toFixed(1))); }
+
+  function renderPass() {
+    var s = st.spend, n = TIERS.filter(function (t) { return s >= t.at; }).length;
+    $('milesLabel').textContent = st.base ? 'Max Miles earned' : 'Bonus Max Miles';
+    $('miles').textContent = fmt(miles(s));
+    $('status').textContent = n === 0 ? 'No tier unlocked yet' : n + ' of 3 tiers unlocked';
+    $('value').textContent = sgd(value(s));
+    $('eff').textContent = eff(s).toFixed(1) + '%';
+    var d = value(s) - s * st.bench / 100;
+    var el = $('delta');
+    if (s <= 0) { el.textContent = 'S$0'; el.className = 'num'; }
+    else {
+      el.textContent = (d >= 0 ? '+' : '−') + sgd(Math.abs(d));
+      el.className = 'num ' + (d >= 0 ? 'good' : 'warn');
+    }
+    $('benchLabel').textContent = 'vs ' + trimPct(st.bench) + '% cashback card';
+  }
+
+  function renderTiers() {
+    var s = st.spend, cum = 0, html = '';
+    TIERS.forEach(function (t) {
+      cum += t.gift;
+      var on = s >= t.at, pct = Math.min(1, s / t.at) * 100;
+      html += '<li class="tier' + (on ? ' on' : '') + '">' +
+        '<span class="at">Spend ' + sgd(t.at) + '</span>' +
+        '<span class="gift">+' + fmt(t.gift) + '</span>' +
+        '<span class="meta">' + fmt(cum) + ' miles in total, worth ' + sgd(cum * st.cents / 100) + '</span>' +
+        '<span class="pill">' + (on ? 'Unlocked' : sgd(t.at - s) + ' to go') + '</span>' +
+        '<span class="bar"><i style="width:' + pct.toFixed(1) + '%"></i></span></li>';
+    });
+    $('tiers').innerHTML = html;
+    var next = null;
+    for (var i = 0; i < TIERS.length; i++) { if (s < TIERS[i].at) { next = TIERS[i]; break; } }
+    var msg;
+    if (!next) {
+      msg = 'All tiers unlocked. More spend adds no further bonus.';
+    } else {
+      var need = next.at - s, gv = next.gift * st.cents / 100;
+      msg = 'Spend ' + sgd(need) + ' more to unlock +' + fmt(next.gift) + ' miles (' + sgd(gv) + '). That is ' + trimPct(gv / need * 100) + '% on the extra spend.';
+    }
+    $('insight').textContent = msg;
+  }
+
+  function drawChart() {
+    var box = $('chart');
+    var W = Math.max(280, Math.floor(box.clientWidth || 340)), H = 250;
+    var m = { l: 40, r: 14, t: 22, b: 30 }, pw = W - m.l - m.r, ph = H - m.t - m.b, XMAX = MAX_SPEND;
+    var X = function (s) { return m.l + Math.min(s, XMAX) / XMAX * pw; };
+    var peak = Math.max(eff(1000), eff(5000), eff(15000), st.bench, 1);
+    var raw = peak * 1.1;
+    var yMax = raw <= 20 ? Math.max(5, Math.ceil(raw / 5) * 5) : Math.ceil(raw / 10) * 10;
+    var tickStep = yMax <= 20 ? 5 : 10;
+    var Y = function (v) { return m.t + ph * (1 - Math.min(Math.max(v, 0), yMax) / yMax); };
+    var out = '';
+
+    for (var v = 0; v <= yMax; v += tickStep) {
+      out += '<line class="grid-line" x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + Y(v) + '" y2="' + Y(v) + '"/>';
+      out += '<text class="tx" x="' + (m.l - 8) + '" y="' + (Y(v) + 4) + '" text-anchor="end">' + v + '%</text>';
+    }
+    [0, 5000, 10000, 15000].forEach(function (s) {
+      var lbl = s === 0 ? '0' : (s / 1000) + 'k';
+      out += '<text class="tx" x="' + X(s) + '" y="' + (H - 8) + '" text-anchor="' + (s === 0 ? 'start' : s === XMAX ? 'end' : 'middle') + '">' + lbl + '</text>';
+    });
+
+    if (st.bench > 0) {
+      var by = Y(st.bench);
+      out += '<line class="bench" x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + by + '" y2="' + by + '"/>';
+      out += '<text class="tx" x="' + (W - m.r) + '" y="' + (by - 6) + '" text-anchor="end" style="fill:var(--warn)">' + trimPct(st.bench) + '% cashback card</text>';
+    }
+
+    var bp = [500, 1000, 5000, 15000];
+    for (var i = 0; i < bp.length - 1; i++) {
+      var a = bp[i], b = bp[i + 1], pts = [];
+      for (var s = a; s < b; s += 100) pts.push(s);
+      pts.push(b - 0.01);
+      var d = pts.map(function (p, k) { return (k ? 'L' : 'M') + X(p).toFixed(1) + ' ' + Y(eff(p)).toFixed(1); }).join(' ');
+      out += '<path class="curve" fill="none" d="' + d + '"/>';
+    }
+    TIERS.forEach(function (t) {
+      var x = X(t.at), y = Y(eff(t.at));
+      var atEdge = t.at >= XMAX;
+      out += '<circle class="dot" cx="' + x + '" cy="' + y + '" r="4.5"/>';
+      out += '<text class="tx-ink" x="' + (atEdge ? x - 8 : x + 8) + '" y="' + (y - 8) + '" text-anchor="' + (atEdge ? 'end' : 'start') + '">' + Math.round(eff(t.at)) + '%</text>';
+    });
+
+    var cx = X(st.spend);
+    out += '<line class="cursor" x1="' + cx + '" x2="' + cx + '" y1="' + m.t + '" y2="' + (m.t + ph) + '"/>';
+    if (st.spend >= 500) out += '<circle class="dot" style="fill:var(--ink)" cx="' + cx + '" cy="' + Y(eff(st.spend)) + '" r="5"/>';
+    var lx = Math.min(Math.max(cx, m.l + 28), W - m.r - 28);
+    out += '<text class="tx-accent" x="' + lx + '" y="' + (m.t - 8) + '" text-anchor="middle">' + sgd(st.spend) + '</text>';
+
+    box.innerHTML = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Effective cashback by spend. The return jumps at S$1,000, S$5,000 and S$15,000, then thins out.">' + out + '</svg>';
+  }
+
+  function render() { renderPass(); renderTiers(); drawChart(); syncChips(); }
+  function syncChips() {
+    document.querySelectorAll('.chip').forEach(function (c) { c.setAttribute('aria-pressed', String(+c.dataset.v === st.spend)); });
+  }
+  function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+
+  $('spend').addEventListener('input', function () {
+    var v = parseFloat(this.value);
+    st.spend = isNaN(v) ? 0 : clamp(v, 0, MAX_SPEND);
+    if (!isNaN(v) && v > MAX_SPEND) this.value = MAX_SPEND;
+    $('spendRange').value = st.spend;
+    render();
+  });
+  $('spendRange').addEventListener('input', function () {
+    st.spend = +this.value; $('spend').value = this.value; render();
+  });
+  document.querySelectorAll('.chip').forEach(function (c) {
+    c.addEventListener('click', function () {
+      st.spend = +c.dataset.v; $('spend').value = st.spend; $('spendRange').value = st.spend; render();
+    });
+  });
+  $('rate').addEventListener('input', function () {
+    st.cents = +this.value; $('rateOut').textContent = 'S$' + (st.cents / 100).toFixed(3); render();
+  });
+  $('bench').addEventListener('input', function () {
+    var v = parseFloat(this.value); st.bench = isNaN(v) ? 0 : clamp(v, 0, 20); render();
+  });
+  $('baseOn').addEventListener('change', function () { st.base = this.checked; render(); });
+
+  if (window.ResizeObserver) { new ResizeObserver(function () { drawChart(); }).observe($('chart')); }
+  else { window.addEventListener('resize', drawChart); }
+
+  document.querySelectorAll('[data-copy]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var text = b.getAttribute('data-copy'), label = b.textContent;
+      function done() { b.textContent = 'Copied'; setTimeout(function () { b.textContent = label; }, 1500); }
+      function fallback() {
+        var t = document.createElement('textarea'); t.value = text; t.setAttribute('readonly', '');
+        t.style.position = 'fixed'; t.style.opacity = '0'; document.body.appendChild(t); t.select();
+        try { document.execCommand('copy'); done(); } catch (e) { b.textContent = 'Select the code'; }
+        document.body.removeChild(t);
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text).then(done, fallback); }
+      else { fallback(); }
+    });
+  });
+  render();
+})();
+</script>
+</body>
+</html>
